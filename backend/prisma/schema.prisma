@@ -1,0 +1,404 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Core Domain ──────────────────────────────────────────────────────────────
+
+model Property {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique @db.Char(5)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  rooms                  Room[]
+  reservations           Reservation[]
+  users                  User[]
+  agents                 Agent[]
+  skills                 Skill[]
+  instructions           Instruction[]
+  hooks                  Hook[]
+  financialLedgerLines   FinancialLedgerLine[]
+  ratePlans              RatePlan[]
+  exchangeRates          ExchangeRate[]
+  roomAllocationLogs     RoomAllocationLog[]
+  propertyDailySnapshots PropertyDailySnapshot[]
+
+  @@map("properties")
+}
+
+// ─── Room ─────────────────────────────────────────────────────────────────────
+
+enum HousekeepingStatus {
+  Dirty
+  Clean
+  Ready
+}
+
+enum OccupancyStatus {
+  Vacant
+  Occupied
+}
+
+enum AvailabilityStatus {
+  Available
+  Sold
+  OutOfOrder
+}
+
+enum StatusIndicator {
+  DND
+  DenyService
+  StayoverService
+  FullService
+}
+
+model Room {
+  roomNumber         String             @map("room_number")
+  propertyId         String             @map("property_id")
+  roomType           String             @map("room_type")
+  floor              String
+  zone               String?
+  building           String?
+  housekeepingStatus HousekeepingStatus @default(Dirty) @map("housekeeping_status")
+  occupancyStatus    OccupancyStatus    @default(Vacant) @map("occupancy_status")
+  availabilityStatus AvailabilityStatus @default(Available) @map("availability_status")
+  statusIndicators   StatusIndicator[]  @map("status_indicators")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  property           Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  reservations       Reservation[]
+  roomAllocationLogs RoomAllocationLog[]
+
+  @@id([roomNumber, propertyId])
+  @@index([propertyId, housekeepingStatus])
+  @@index([propertyId, availabilityStatus])
+  @@map("rooms")
+}
+
+// ─── Reservation ──────────────────────────────────────────────────────────────
+
+enum LoyaltyTier {
+  Club
+  Silver
+  Gold
+  Platinum
+  Diamond
+  None
+}
+
+enum DepositStatus {
+  Paid
+  Pending
+  Future
+}
+
+enum ReservationStatus {
+  InHouse
+  Arrival
+  Departure
+  NoShow
+  Canceled
+}
+
+model Reservation {
+  id                   String            @id @default(uuid())
+  confirmationNumber   String            @unique @map("confirmation_number")
+  propertyId           String            @map("property_id")
+  roomNumber           String?           @map("room_number")
+  // guestFirstName and guestLastName are stored AES-256-GCM encrypted by the application layer.
+  // Raw plaintext must never reach the database.
+  guestFirstName       String            @map("guest_first_name")
+  guestLastName        String            @map("guest_last_name")
+  loyaltyTier          LoyaltyTier       @default(None) @map("loyalty_tier")
+  earlyCheckInEligible Boolean           @default(false) @map("early_check_in_eligible")
+  lateCheckOutEligible Boolean           @default(false) @map("late_check_out_eligible")
+  depositStatus        DepositStatus     @default(Pending) @map("deposit_status")
+  status               ReservationStatus @default(Arrival)
+  checkInDate          DateTime          @map("check_in_date") @db.Date
+  checkOutDate         DateTime          @map("check_out_date") @db.Date
+  digitcardTokenHash   String?           @map("digitcard_token_hash")
+  isDigitcardCheckedIn Boolean           @default(false) @map("is_digitcard_checked_in")
+  identityDocSha256    String?           @map("identity_doc_sha256")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+
+  property             Property              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room                 Room?                 @relation(fields: [roomNumber, propertyId], references: [roomNumber, propertyId])
+  financialLedgerLines FinancialLedgerLine[]
+  roomAllocationLogs   RoomAllocationLog[]
+
+  @@index([propertyId, status])
+  @@index([propertyId, checkInDate])
+  @@index([propertyId, checkOutDate])
+  @@map("reservations")
+}
+
+// ─── Users / RBAC ─────────────────────────────────────────────────────────────
+
+enum UserRole {
+  FrontDeskAgent
+  HousekeepingStaff
+  HousekeepingManager
+  SystemAgent
+  Admin
+}
+
+model User {
+  id           String   @id @default(uuid())
+  propertyId   String   @map("property_id")
+  email        String
+  firstName    String   @map("first_name")
+  lastName     String   @map("last_name")
+  initials     String   @db.Char(2)
+  role         UserRole
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  property             Property              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  financialLedgerLines FinancialLedgerLine[]
+
+  @@unique([email, propertyId])
+  @@map("users")
+}
+
+// ─── Finance ──────────────────────────────────────────────────────────────────
+
+enum LedgerLineType {
+  CHARGE
+  PAYMENT
+  ADJUSTMENT
+  REFUND
+}
+
+model FinancialLedgerLine {
+  id             String         @id @default(uuid())
+  propertyId     String         @map("property_id")
+  reservationId  String         @map("reservation_id")
+  folioId        String         @map("folio_id")
+  lineType       LedgerLineType @map("line_type")
+  amountCents    Int            @map("amount_cents")
+  currency       String         @default("USD")
+  description    String
+  postedById     String         @map("posted_by_id")
+  idempotencyKey String         @unique @map("idempotency_key")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  property    Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  postedBy    User        @relation(fields: [postedById], references: [id], onDelete: Restrict)
+
+  @@index([propertyId, reservationId])
+  @@index([propertyId, folioId])
+  @@index([propertyId, createdAt])
+  @@map("financial_ledger_lines")
+}
+
+model RatePlan {
+  id                String   @id @default(uuid())
+  propertyId        String   @map("property_id")
+  roomType          String   @map("room_type")
+  dateStart         DateTime @map("date_start") @db.Date
+  dateEnd           DateTime @map("date_end") @db.Date
+  baseRateCents     Int      @map("base_rate_cents")
+  demandMultiplier  Float    @default(1.0) @map("demand_multiplier")
+  seasonalityFactor Float    @default(1.0) @map("seasonality_factor")
+  dayOfWeekWeights  Json     @map("day_of_week_weights")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, roomType, dateStart, dateEnd])
+  @@index([propertyId, isActive])
+  @@map("rate_plans")
+}
+
+model ExchangeRate {
+  id            String   @id @default(uuid())
+  propertyId    String   @map("property_id")
+  fromCurrency  String   @map("from_currency")
+  toCurrency    String   @map("to_currency")
+  rateBasisPts  Int      @map("rate_basis_pts")
+  effectiveDate DateTime @map("effective_date") @db.Date
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, fromCurrency, toCurrency, effectiveDate])
+  @@index([propertyId, fromCurrency, toCurrency, effectiveDate])
+  @@map("exchange_rates")
+}
+
+// ─── Room Allocation ──────────────────────────────────────────────────────────
+
+enum AllocationType {
+  AUTO_ASSIGNED
+  MANUAL_OVERRIDE
+  SOFT_ALLOCATION
+}
+
+model RoomAllocationLog {
+  id             String         @id @default(uuid())
+  propertyId     String         @map("property_id")
+  reservationId  String         @map("reservation_id")
+  roomNumber     String         @map("room_number")
+  allocationType AllocationType @map("allocation_type")
+  reason         String
+  allocatedBy    String         @map("allocated_by")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  property    Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  room        Room        @relation(fields: [roomNumber, propertyId], references: [roomNumber, propertyId])
+
+  @@index([propertyId, reservationId])
+  @@index([propertyId, roomNumber])
+  @@index([propertyId, createdAt])
+  @@map("room_allocation_logs")
+}
+
+// ─── Dashboard Snapshots ──────────────────────────────────────────────────────
+
+model PropertyDailySnapshot {
+  id                String   @id @default(uuid())
+  propertyId        String   @map("property_id")
+  snapshotDate      DateTime @map("snapshot_date") @db.Date
+  roomsOccupied     Int      @default(0) @map("rooms_occupied")
+  totalRooms        Int      @default(0) @map("total_rooms")
+  roomsOutOfOrder   Int      @default(0) @map("rooms_out_of_order")
+  roomsSold         Int      @default(0) @map("rooms_sold")
+  guestsInHouse     Int      @default(0) @map("guests_in_house")
+  departuresPending Int      @default(0) @map("departures_pending")
+  arrivalsExpected  Int      @default(0) @map("arrivals_expected")
+  noShows           Int      @default(0) @map("no_shows")
+  totalRevenueCents Int      @default(0) @map("total_revenue_cents")
+  depositsPaid      Int      @default(0) @map("deposits_paid")
+  depositsPending   Int      @default(0) @map("deposits_pending")
+  occupancyPercent  Float    @default(0) @map("occupancy_percent")
+  adrCents          Int      @default(0) @map("adr_cents")
+  revparCents       Int      @default(0) @map("revpar_cents")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, snapshotDate])
+  @@index([propertyId, snapshotDate(sort: Desc)])
+  @@map("property_daily_snapshots")
+}
+
+// ─── Extensions Engine ────────────────────────────────────────────────────────
+
+enum AgentStatus {
+  Active
+  Inactive
+  Paused
+}
+
+model Agent {
+  id          String      @id @default(uuid())
+  propertyId  String      @map("property_id")
+  name        String
+  description String?
+  status      AgentStatus @default(Active)
+  config      Json        @default("{}")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  property     Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  agentSkills  AgentSkill[]
+  instructions Instruction[]
+  hooks        Hook[]
+
+  @@unique([name, propertyId])
+  @@map("agents")
+}
+
+model Skill {
+  id          String   @id @default(uuid())
+  propertyId  String   @map("property_id")
+  name        String
+  description String?
+  logic       Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  property    Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  agentSkills AgentSkill[]
+
+  @@unique([name, propertyId])
+  @@map("skills")
+}
+
+model AgentSkill {
+  agentId    String   @map("agent_id")
+  skillId    String   @map("skill_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, skillId])
+  @@map("agent_skills")
+}
+
+model Instruction {
+  id         String   @id @default(uuid())
+  propertyId String   @map("property_id")
+  agentId    String?  @map("agent_id")
+  name       String
+  blueprint  Json
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  agent    Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@unique([name, propertyId])
+  @@map("instructions")
+}
+
+enum HookEvent {
+  OnRoomStatusChange
+  OnCheckIn
+  OnCheckOut
+  OnReservationCreate
+  OnReservationCancel
+  OnNightAudit
+}
+
+enum HookMethod {
+  GET
+  POST
+  PUT
+  PATCH
+}
+
+model Hook {
+  id         String     @id @default(uuid())
+  propertyId String     @map("property_id")
+  agentId    String?    @map("agent_id")
+  name       String
+  event      HookEvent
+  url        String
+  method     HookMethod @default(POST)
+  headers    Json       @default("{}")
+  isAsync    Boolean    @default(true) @map("is_async")
+  isActive   Boolean    @default(true) @map("is_active")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  agent    Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@unique([name, propertyId])
+  @@map("hooks")
+}
