@@ -88,7 +88,7 @@ export default function ArrivalsPage() {
     setActionLoading(true);
     setActionError(null);
     try {
-      await confirmAllocation(alloc.id);
+      await confirmAllocation(resId, alloc.id);
       setAllocationMap((prev) => {
         const next = { ...prev };
         delete next[resId];
@@ -111,7 +111,7 @@ export default function ArrivalsPage() {
     setActionLoading(true);
     setActionError(null);
     try {
-      await overrideAllocation(alloc.id, overrideRoom.trim(), overrideReason.trim() || 'Manual override by front desk');
+      await overrideAllocation(resId, overrideRoom.trim());
       setAllocationMap((prev) => {
         const next = { ...prev };
         delete next[resId];
