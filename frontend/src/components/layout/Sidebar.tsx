@@ -26,11 +26,19 @@ const NAV = [
     label: 'FINANCE',
     items: [
       { href: '/dashboard/finance/ledger', label: 'Folio & Ledger', icon: LedgerIcon },
+      { href: '/dashboard/rate-management', label: 'Rate Management', icon: RateIcon },
+    ],
+  },
+  {
+    label: 'GUEST SERVICES',
+    items: [
+      { href: '/dashboard/digitcard', label: 'Digital Check-In', icon: DigitcardIcon },
     ],
   },
   {
     label: 'ADVANCED',
     items: [
+      { href: '/dashboard/allocation-log', label: 'Allocation Log', icon: AllocationIcon },
       { href: '/dashboard/localization/japan', label: 'Packages & Revenue', icon: PackagesIcon },
       { href: '/dashboard/localization/china', label: 'Channels & Compliance', icon: ChannelsIcon },
     ],
@@ -204,6 +212,28 @@ function ChannelsIcon({ size = 16 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
       <circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>
       <line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/>
+    </svg>
+  );
+}
+function RateIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 100 7h5a3.5 3.5 0 110 7H6"/>
+    </svg>
+  );
+}
+function DigitcardIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+      <line x1="6" y1="15" x2="10" y2="15"/>
+    </svg>
+  );
+}
+function AllocationIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><line x1="8" y1="22" x2="8" y2="12"/><line x1="16" y1="22" x2="16" y2="12"/><line x1="8" y1="12" x2="16" y2="12"/>
     </svg>
   );
 }

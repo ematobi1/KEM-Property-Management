@@ -1,14 +1,39 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import TopBar from '@/components/layout/TopBar';
 import type { Reservation } from '@/types';
 import { MOCK_ARRIVALS } from '@/lib/mock';
+import { getPendingAllocations, confirmAllocation, overrideAllocation } from '@/lib/api/allocations';
+import type { PendingAllocation } from '@/lib/api/types';
+import { ApiError } from '@/lib/api/client';
+
+type AllocationMap = Record<string, PendingAllocation>;
 
 export default function ArrivalsPage() {
   const [arrivals, setArrivals] = useState<Reservation[]>(MOCK_ARRIVALS);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [checkingIn, setCheckingIn] = useState<string | null>(null);
+  const [allocationMap, setAllocationMap] = useState<AllocationMap>({});
+  const [panelResId, setPanelResId] = useState<string | null>(null);
+  const [overrideRoom, setOverrideRoom] = useState('');
+  const [overrideReason, setOverrideReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getPendingAllocations()
+      .then((res) => {
+        const map: AllocationMap = {};
+        for (const alloc of res.data) {
+          map[alloc.reservationId] = alloc;
+        }
+        setAllocationMap(map);
+      })
+      .catch(() => {
+        // Backend not connected — silently skip allocation badges
+      });
+  }, []);
 
   function toggleSelect(id: string) {
     setSelected((prev) => {
@@ -45,7 +70,68 @@ export default function ArrivalsPage() {
     );
   }
 
+  function openPanel(resId: string) {
+    setPanelResId(resId);
+    setOverrideRoom('');
+    setOverrideReason('');
+    setActionError(null);
+  }
+
+  function closePanel() {
+    setPanelResId(null);
+    setActionError(null);
+  }
+
+  async function handleConfirm(resId: string) {
+    const alloc = allocationMap[resId];
+    if (!alloc) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await confirmAllocation(alloc.id);
+      setAllocationMap((prev) => {
+        const next = { ...prev };
+        delete next[resId];
+        return next;
+      });
+      setArrivals((prev) =>
+        prev.map((r) => r.id === resId ? { ...r, roomNumber: alloc.roomNumber } : r)
+      );
+      closePanel();
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Failed to confirm allocation');
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleOverride(resId: string) {
+    const alloc = allocationMap[resId];
+    if (!alloc || !overrideRoom.trim()) { setActionError('Room number is required'); return; }
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await overrideAllocation(alloc.id, overrideRoom.trim(), overrideReason.trim() || 'Manual override by front desk');
+      setAllocationMap((prev) => {
+        const next = { ...prev };
+        delete next[resId];
+        return next;
+      });
+      setArrivals((prev) =>
+        prev.map((r) => r.id === resId ? { ...r, roomNumber: overrideRoom.trim() } : r)
+      );
+      closePanel();
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Failed to override allocation');
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   const unassigned = arrivals.filter((r) => !r.roomNumber).length;
+  const pendingCount = Object.keys(allocationMap).length;
+  const panelAlloc = panelResId ? allocationMap[panelResId] : null;
+  const panelRes = panelResId ? arrivals.find((r) => r.id === panelResId) : null;
 
   return (
     <>
@@ -55,9 +141,8 @@ export default function ArrivalsPage() {
         actions={
           <div className="flex items-center gap-2">
             <span className="badge badge-green">{arrivals.length} EXPECTED</span>
-            {unassigned > 0 && (
-              <span className="badge badge-amber">{unassigned} UNASSIGNED</span>
-            )}
+            {unassigned > 0 && <span className="badge badge-amber">{unassigned} UNASSIGNED</span>}
+            {pendingCount > 0 && <span className="badge badge-purple">{pendingCount} SOFT ALLOC</span>}
           </div>
         }
       />
@@ -68,17 +153,11 @@ export default function ArrivalsPage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {selected.size > 0 && (
-              <span className="text-[11px] font-mono text-cyber">
-                {selected.size} selected
-              </span>
+              <span className="text-[11px] font-mono text-cyber">{selected.size} selected</span>
             )}
           </div>
           <div className="flex gap-2">
-            <button
-              onClick={handleAutoAssign}
-              disabled={selected.size === 0}
-              className="btn btn-cyber"
-            >
+            <button onClick={handleAutoAssign} disabled={selected.size === 0} className="btn btn-cyber">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
               </svg>
@@ -127,6 +206,7 @@ export default function ArrivalsPage() {
               )}
               {arrivals.map((r) => {
                 const isChecking = checkingIn === r.id;
+                const alloc = allocationMap[r.id];
                 return (
                   <tr key={r.id} className={selected.has(r.id) ? 'bg-cyber/[0.03]' : ''}>
                     <td>
@@ -140,19 +220,28 @@ export default function ArrivalsPage() {
                     <td><span className="font-mono text-[11px] text-cyber/80">{r.confirmationNumber}</span></td>
                     <td><span className="font-medium">{r.guestLastName}, {r.guestFirstName}</span></td>
                     <td>
-                      {r.roomNumber ? (
-                        <span className="font-mono text-[12px] px-2 py-0.5 rounded-sm bg-space-700 border border-cyber/10 text-slate-300">
-                          {r.roomNumber}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-mono text-neon-amber/80 bg-neon-amber/5 border border-neon-amber/20 px-2 py-0.5 rounded-sm">
-                          UNASSIGNED
-                        </span>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {r.roomNumber ? (
+                          <span className="font-mono text-[12px] px-2 py-0.5 rounded-sm bg-space-700 border border-cyber/10 text-slate-300">
+                            {r.roomNumber}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-mono text-neon-amber/80 bg-neon-amber/5 border border-neon-amber/20 px-2 py-0.5 rounded-sm">
+                            UNASSIGNED
+                          </span>
+                        )}
+                        {alloc && (
+                          <button
+                            onClick={() => openPanel(r.id)}
+                            className="flex items-center gap-1 text-[9px] font-mono text-neon-purple/90 bg-neon-purple/8 border border-neon-purple/20 px-2 py-0.5 rounded-sm hover:bg-neon-purple/15 transition-colors"
+                          >
+                            <span className="status-dot dot-purple" style={{ width: 4, height: 4 }} />
+                            Room {alloc.roomNumber} suggested
+                          </button>
+                        )}
+                      </div>
                     </td>
-                    <td>
-                      <TierBadge tier={r.loyaltyTier} />
-                    </td>
+                    <td><TierBadge tier={r.loyaltyTier} /></td>
                     <td className="font-mono text-xs text-slate-400">{r.checkInDate}</td>
                     <td className="font-mono text-xs text-slate-400">{r.checkOutDate}</td>
                     <td>
@@ -194,6 +283,82 @@ export default function ArrivalsPage() {
           </table>
         </div>
       </main>
+
+      {/* Allocation panel */}
+      {panelResId && panelAlloc && panelRes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closePanel} />
+          <div className="relative card-cyber rounded-sm p-6 w-[420px] shadow-2xl animate-fade-in">
+
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className="text-[10px] font-mono font-bold text-neon-purple uppercase tracking-widest">Soft Allocation</p>
+                <p className="text-sm font-semibold text-slate-200 mt-0.5">
+                  {panelRes.guestLastName}, {panelRes.guestFirstName}
+                </p>
+                <p className="text-[10px] font-mono text-slate-600 mt-0.5">{panelRes.confirmationNumber}</p>
+              </div>
+              <button onClick={closePanel} className="btn btn-ghost p-1.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Suggested room */}
+            <div className="p-4 rounded-sm bg-neon-purple/5 border border-neon-purple/20 mb-5">
+              <p className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-2">Suggested Room</p>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-mono font-bold text-neon-purple">{panelAlloc.roomNumber}</span>
+                <div className="text-right">
+                  <p className="text-[10px] font-mono text-slate-500">Reason</p>
+                  <p className="text-xs text-slate-400 max-w-[180px] text-right">{panelAlloc.reason}</p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => handleConfirm(panelResId)}
+              disabled={actionLoading}
+              className="btn btn-success w-full justify-center mb-3"
+            >
+              {actionLoading ? 'Processing…' : `Confirm Room ${panelAlloc.roomNumber}`}
+            </button>
+
+            <div className="border-t border-cyber/10 pt-4 space-y-3">
+              <p className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">Override — Assign Different Room</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={overrideRoom}
+                  onChange={(e) => setOverrideRoom(e.target.value)}
+                  placeholder="Room number"
+                  className="pms-input text-xs font-mono w-28 flex-shrink-0"
+                  maxLength={4}
+                />
+                <input
+                  type="text"
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  placeholder="Reason (optional)"
+                  className="pms-input text-xs flex-1"
+                />
+              </div>
+              <button
+                onClick={() => handleOverride(panelResId)}
+                disabled={actionLoading || !overrideRoom.trim()}
+                className="btn btn-cyber w-full justify-center"
+              >
+                Override Assignment
+              </button>
+            </div>
+
+            {actionError && (
+              <p className="text-neon-red text-xs font-mono mt-3">{actionError}</p>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }

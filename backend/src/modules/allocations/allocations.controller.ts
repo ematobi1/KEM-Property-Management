@@ -10,8 +10,17 @@ const logQuerySchema = z.object({
 });
 
 export async function handleGetAllocationLog(req: AuthenticatedRequest, res: Response) {
-  const parsed = logQuerySchema.safeParse(req.query);
-  if (!parsed.success) throw new ValidationError(parsed.error.flatten().fieldErrors);
+  const raw = {
+    startDate: typeof req.query['startDate'] === 'string' ? req.query['startDate'] : undefined,
+    endDate: typeof req.query['endDate'] === 'string' ? req.query['endDate'] : undefined,
+  };
+  const parsed = logQuerySchema.safeParse(raw);
+  if (!parsed.success) {
+    const fields = Object.fromEntries(
+      Object.entries(parsed.error.flatten().fieldErrors).map(([k, v]) => [k, (v ?? []).join(', ')])
+    );
+    throw new ValidationError('Invalid query parameters', fields);
+  }
   const { propertyId } = req.user;
   const { startDate, endDate } = parsed.data;
   const logs = await getAllocationLog(propertyId, startDate, endDate);
