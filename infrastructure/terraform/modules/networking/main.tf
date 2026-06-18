@@ -266,7 +266,7 @@ resource "aws_security_group_rule" "alb_egress_ecs" {
   protocol                 = "tcp"
   security_group_id        = aws_security_group.alb.id
   source_security_group_id = aws_security_group.ecs.id
-  description              = "ALB → ECS tasks"
+  description              = "ALB to ECS tasks"
 }
 
 resource "aws_security_group_rule" "ecs_egress_pg" {
@@ -276,7 +276,7 @@ resource "aws_security_group_rule" "ecs_egress_pg" {
   protocol                 = "tcp"
   security_group_id        = aws_security_group.ecs.id
   source_security_group_id = aws_security_group.database.id
-  description              = "ECS → RDS PostgreSQL"
+  description              = "ECS to RDS PostgreSQL"
 }
 
 resource "aws_security_group_rule" "ecs_egress_docdb" {
@@ -286,7 +286,7 @@ resource "aws_security_group_rule" "ecs_egress_docdb" {
   protocol                 = "tcp"
   security_group_id        = aws_security_group.ecs.id
   source_security_group_id = aws_security_group.database.id
-  description              = "ECS → DocumentDB"
+  description              = "ECS to DocumentDB"
 }
 
 resource "aws_security_group_rule" "ecs_egress_kafka" {
@@ -296,7 +296,7 @@ resource "aws_security_group_rule" "ecs_egress_kafka" {
   protocol                 = "tcp"
   security_group_id        = aws_security_group.ecs.id
   source_security_group_id = aws_security_group.kafka.id
-  description              = "ECS → MSK Kafka"
+  description              = "ECS to MSK Kafka"
 }
 
 resource "aws_security_group_rule" "ecs_egress_https" {

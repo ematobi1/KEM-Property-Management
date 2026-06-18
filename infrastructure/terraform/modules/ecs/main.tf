@@ -241,12 +241,12 @@ resource "aws_ecs_task_definition" "service" {
 resource "aws_ecs_service" "main" {
   for_each = local.services
 
-  name                               = "hotel-key-${var.environment}-${each.key}"
-  cluster                            = aws_ecs_cluster.main.id
-  task_definition                    = aws_ecs_task_definition.service[each.key].arn
-  desired_count                      = each.value.min_tasks
-  launch_type                        = "FARGATE"
-  health_check_grace_period_seconds  = each.value.attach_to_alb ? 60 : null
+  name                              = "hotel-key-${var.environment}-${each.key}"
+  cluster                           = aws_ecs_cluster.main.id
+  task_definition                   = aws_ecs_task_definition.service[each.key].arn
+  desired_count                     = each.value.min_tasks
+  launch_type                       = "FARGATE"
+  health_check_grace_period_seconds = each.value.attach_to_alb ? 60 : null
 
   network_configuration {
     subnets          = var.private_subnet_ids

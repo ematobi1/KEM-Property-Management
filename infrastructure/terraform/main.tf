@@ -21,14 +21,14 @@ module "alb" {
 module "database" {
   source = "./modules/database"
 
-  environment          = var.environment
-  instance_class_pg    = var.instance_class_pg
-  instance_class_docdb = var.instance_class_docdb
-  enable_multi_az      = var.enable_multi_az
-  enable_read_replica  = var.enable_read_replica
+  environment           = var.environment
+  instance_class_pg     = var.instance_class_pg
+  instance_class_docdb  = var.instance_class_docdb
+  enable_multi_az       = var.enable_multi_az
+  enable_read_replica   = var.enable_read_replica
   backup_retention_days = var.backup_retention_days
-  deletion_protection  = var.deletion_protection
-  docdb_instance_count = var.docdb_instance_count
+  deletion_protection   = var.deletion_protection
+  docdb_instance_count  = var.docdb_instance_count
 
   database_subnet_ids = module.networking.database_subnet_ids
   sg_database_id      = module.networking.sg_database_id
