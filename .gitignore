@@ -24,6 +24,14 @@ backend/prisma/*.db-wal
 tsconfig.tsbuildinfo
 frontend/tsconfig.tsbuildinfo
 
+# Terraform state and variable files with secrets
+infrastructure/terraform/terraform.tfvars
+infrastructure/terraform/.terraform/
+infrastructure/terraform/.terraform.lock.hcl
+infrastructure/terraform/*.tfstate
+infrastructure/terraform/*.tfstate.backup
+infrastructure/terraform/backend.hcl
+
 # OS / editor
 .DS_Store
 Thumbs.db

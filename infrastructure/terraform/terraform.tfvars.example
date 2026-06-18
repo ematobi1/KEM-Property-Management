@@ -1,0 +1,36 @@
+# ─── Copy this file to terraform.tfvars and fill in real values ───────────────
+# NEVER commit terraform.tfvars — it may contain sensitive references.
+
+# ─── Core ─────────────────────────────────────────────────────────────────────
+aws_region  = "us-east-1"
+environment = "staging"
+
+# ─── Networking ───────────────────────────────────────────────────────────────
+enable_dual_nat = false   # Set true for production HA
+
+# ─── Database ─────────────────────────────────────────────────────────────────
+instance_class_pg    = "db.t3.medium"   # db.r6g.large for production
+instance_class_docdb = "db.t3.medium"
+enable_multi_az      = false            # true for production
+enable_read_replica  = false            # true for production
+backup_retention_days = 7              # 30 for production
+deletion_protection  = false           # true for production
+docdb_instance_count = 1              # 3 for production
+
+# ─── Kafka ────────────────────────────────────────────────────────────────────
+kafka_broker_count  = 2                 # Must match private subnet count
+kafka_instance_type = "kafka.t3.small"  # kafka.m5.large for production
+
+# ─── ECS ──────────────────────────────────────────────────────────────────────
+# Your ECR base URL: {account_id}.dkr.ecr.{region}.amazonaws.com/hotel-key
+ecr_repo_base_url = "123456789012.dkr.ecr.us-east-1.amazonaws.com/hotel-key"
+image_tag         = "latest"
+
+# ─── ALB ──────────────────────────────────────────────────────────────────────
+# Request or import an ACM certificate for your domain before applying.
+acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/REPLACE"
+
+# ─── Monitoring ───────────────────────────────────────────────────────────────
+# Create an SNS topic and subscribe your ops email/PagerDuty before applying.
+alarm_sns_topic_arn = ""   # e.g. "arn:aws:sns:us-east-1:123456789012:hotel-key-alarms"
+log_retention_days  = 30  # 90 for production
